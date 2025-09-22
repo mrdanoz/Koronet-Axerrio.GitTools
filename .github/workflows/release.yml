@@ -2,8 +2,7 @@ name: release-module-zip
 
 on:
   push:
-    tags:
-      - 'v*'   # e.g. v0.3.0
+    tags: ['v*']
 
 jobs:
   build-and-release:
@@ -13,16 +12,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify psd1 version matches tag
+      - name: Locate psd1 and verify version == tag
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
           $tag = "${{ github.ref_name }}".TrimStart('v')
-          $moduleDir = 'Koronet-Axerrio.GitTools'
-          $psd1 = Join-Path $moduleDir 'Koronet-Axerrio.GitTools.psd1'
-          if (-not (Test-Path $psd1)) { throw "psd1 not found at $psd1" }
+          $psd1Item = Get-ChildItem -Recurse -Filter 'Koronet-Axerrio.GitTools.psd1' | Select-Object -First 1
+          if (-not $psd1Item) { throw "psd1 not found anywhere in repo" }
 
+          $psd1 = $psd1Item.FullName
           $manifest = Test-ModuleManifest $psd1
           $modVer = $manifest.ModuleVersion.ToString()
 
@@ -32,34 +31,22 @@ jobs:
             throw "ModuleVersion ($modVer) does not match tag v$tag. Update the psd1 before tagging."
           }
 
-      - name: Build ZIP artifact
+          "PSD1_PATH=$psd1" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build ZIP (stage module folder if needed)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $moduleDir  = 'Koronet-Axerrio.GitTools'
-          $zipName    = "$moduleDir-${{ github.ref_name }}.zip"  # e.g. Koronet-Axerrio.GitTools-v0.3.0.zip
-          if (-not (Test-Path $moduleDir)) { throw "Module folder not found: $moduleDir" }
+          $psd1 = "${{ env.PSD1_PATH }}"
+          $moduleName = 'Koronet-Axerrio.GitTools'
+          $zipName    = "$moduleName-${{ github.ref_name }}.zip"
 
-          # Ensure the ZIP contains the top-level module folder
-          if (Test-Path $zipName) { Remove-Item $zipName -Force }
-          Compress-Archive -Path $moduleDir -DestinationPath $zipName -Force
+          $moduleRoot = Split-Path -Parent $psd1
+          $leaf = Split-Path -Leaf $moduleRoot
 
-          # Also stage the bootstrap script as a separate asset
-          $bootstrap = 'tools/KXGT-Bootstrap.ps1'
-          if (-not (Test-Path $bootstrap)) {
-            throw "Bootstrap script not found at $bootstrap"
-          }
-
-          "ZIP_PATH=$zipName"       | Out-File -FilePath $env:GITHUB_ENV -Append
-          "BOOTSTRAP_PATH=$bootstrap" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Create GitHub Release (attach ZIP + Bootstrap)
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            ${{ env.ZIP_PATH }}
-            ${{ env.BOOTSTRAP_PATH }}
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if ($leaf -ne $moduleName) {
+            # Create a staging folder named exactly like the module
+            $stage = Join-Path $env:RUNNER_TEMP $moduleName
+            if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+            New-Item -ItemType Directory -Path $stage |
