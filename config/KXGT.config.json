@@ -1,0 +1,10 @@
+{
+  "defaultRepoPath": "V:\\Working\\DH\\abs-erp",
+  "remoteRepoUrl":  "https://github.com/your-org/abs-erp.git",
+  "defaultBaseBranch": "develop",
+  "auditServer": "SQLDEV01",
+  "auditDatabase": "ABSDEV",
+  "auditSchema": "dba",
+  "appNamePrefix": "KXGT-DEV-",
+  "defaultAppName": "KXGT-DEV-DH"
+}

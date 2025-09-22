@@ -1,0 +1,65 @@
+name: release-module-zip
+
+on:
+  push:
+    tags:
+      - 'v*'   # e.g. v0.3.0
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify psd1 version matches tag
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $moduleDir = 'Koronet-Axerrio.GitTools'
+          $psd1 = Join-Path $moduleDir 'Koronet-Axerrio.GitTools.psd1'
+          if (-not (Test-Path $psd1)) { throw "psd1 not found at $psd1" }
+
+          $manifest = Test-ModuleManifest $psd1
+          $modVer = $manifest.ModuleVersion.ToString()
+
+          "Tag: v$tag"
+          "ModuleVersion: $modVer"
+          if ($modVer -ne $tag) {
+            throw "ModuleVersion ($modVer) does not match tag v$tag. Update the psd1 before tagging."
+          }
+
+      - name: Build ZIP artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $moduleDir  = 'Koronet-Axerrio.GitTools'
+          $zipName    = "$moduleDir-${{ github.ref_name }}.zip"  # e.g. Koronet-Axerrio.GitTools-v0.3.0.zip
+          if (-not (Test-Path $moduleDir)) { throw "Module folder not found: $moduleDir" }
+
+          # Ensure the ZIP contains the top-level module folder
+          if (Test-Path $zipName) { Remove-Item $zipName -Force }
+          Compress-Archive -Path $moduleDir -DestinationPath $zipName -Force
+
+          # Also stage the bootstrap script as a separate asset
+          $bootstrap = 'tools/KXGT-Bootstrap.ps1'
+          if (-not (Test-Path $bootstrap)) {
+            throw "Bootstrap script not found at $bootstrap"
+          }
+
+          "ZIP_PATH=$zipName"       | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BOOTSTRAP_PATH=$bootstrap" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Create GitHub Release (attach ZIP + Bootstrap)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.BOOTSTRAP_PATH }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

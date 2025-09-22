@@ -1,0 +1,38 @@
+#requires -Version 7.4
+param(
+  [string]$SqlInstance = 'SQLDEV01',
+  [string]$Database    = 'ABSDEV'
+)
+
+# Friendly runtime check
+$min = [Version]'7.4.0'
+try { $cur = $PSVersionTable.PSVersion } catch { $cur = $null }
+if (-not $cur -or $cur -lt $min) {
+    $msg = @"
+Koronet-Axerrio.GitTools requires PowerShell $($min) or higher.
+Current version: $($cur)
+
+Please install the latest PowerShell 7.x from:
+https://github.com/PowerShell/PowerShell/releases
+"@
+    throw $msg
+}
+
+$modulePath = Join-Path $PSScriptRoot '..\Koronet-Axerrio.GitTools.psm1'
+Import-Module $modulePath -Force
+
+$cfg = Get-KXGTConfig
+
+# Resolve base branch without ternary
+$base = $cfg.defaultBaseBranch
+if (-not $base) { $base = 'develop' }
+
+$result = Ensure-KXGTLocalRepo `
+    -RepoPath  $cfg.defaultRepoPath `
+    -RemoteUrl $cfg.remoteRepoUrl `
+    -BaseBranch $base `
+    -ResetOrigin `
+    -WhatIf:$false
+
+$result | Format-List
+Write-Host "Workspace ready at $($cfg.defaultRepoPath). HEAD=$($result.Head)" -ForegroundColor Green

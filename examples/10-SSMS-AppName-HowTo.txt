@@ -1,0 +1,10 @@
+SSMS Application Name (PROGRAM_NAME) setup
+
+1) In SSMS, click "Connect" -> "Database Engine" -> "Options >>"
+2) Go to the "Additional Connection Parameters" tab.
+3) Enter:
+   Application Name=KXGT-yourname
+4) Click "Connect".
+
+Ensure that dba.Developer.AppName holds the exact same value for your developer row.
+Your DDL trigger will then be able to resolve the developer without SESSION_CONTEXT.
