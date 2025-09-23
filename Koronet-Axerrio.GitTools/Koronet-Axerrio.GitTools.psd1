@@ -1,6 +1,6 @@
 @{
     RootModule = 'Koronet-Axerrio.GitTools.psm1'
-    ModuleVersion = '0.8.3'
+    ModuleVersion = '0.8.4'
     GUID = 'd2a5b3e6-0000-4c3a-9a2b-5f7a12345678'
     Author = 'Koronet - Daniel de Haan'
     CompanyName = 'Koronet'
