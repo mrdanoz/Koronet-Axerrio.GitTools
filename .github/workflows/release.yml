@@ -3,6 +3,7 @@ name: release-module-zip
 on:
   push:
     tags: ['v*']
+  workflow_dispatch: {}   # lets you test manually from the Actions tab
 
 jobs:
   build-and-release:
@@ -12,26 +13,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Locate psd1 and verify version == tag
+      - name: Debug repo layout
+        shell: pwsh
+        run: |
+          Write-Host "ref: $env:GITHUB_REF_NAME"
+          Get-ChildItem -Recurse -File | Select-Object FullName
+
+      - name: Locate psd1 and verify version == tag (when tag is present)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $tag = "${{ github.ref_name }}".TrimStart('v')
+          # Find the psd1 anywhere in the repo
           $psd1Item = Get-ChildItem -Recurse -Filter 'Koronet-Axerrio.GitTools.psd1' | Select-Object -First 1
           if (-not $psd1Item) { throw "psd1 not found anywhere in repo" }
-
           $psd1 = $psd1Item.FullName
-          $manifest = Test-ModuleManifest $psd1
-          $modVer = $manifest.ModuleVersion.ToString()
-
-          "Tag: v$tag"
-          "ModuleVersion: $modVer"
-          if ($modVer -ne $tag) {
-            throw "ModuleVersion ($modVer) does not match tag v$tag. Update the psd1 before tagging."
-          }
-
           "PSD1_PATH=$psd1" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # If this run was triggered by a tag push, enforce version match
+          $refName = "${{ github.ref_name }}"
+          if ($refName -and $refName.StartsWith('v')) {
+            $tag = $refName.TrimStart('v')
+            $manifest = Test-ModuleManifest $psd1
+            $modVer = $manifest.ModuleVersion.ToString()
+            "Tag: v$tag"
+            "ModuleVersion: $modVer"
+            if ($modVer -ne $tag) {
+              throw "ModuleVersion ($modVer) does not match tag v$tag. Update the psd1 before tagging."
+            }
+          } else {
+            Write-Host "No tag context (manual run). Skipping version check."
+          }
 
       - name: Build ZIP (stage module folder if needed)
         shell: pwsh
@@ -41,12 +53,46 @@ jobs:
           $psd1 = "${{ env.PSD1_PATH }}"
           $moduleName = 'Koronet-Axerrio.GitTools'
           $zipName    = "$moduleName-${{ github.ref_name }}.zip"
+          if (-not $env:GITHUB_REF_NAME) { $zipName = "$moduleName-manual.zip" }
 
           $moduleRoot = Split-Path -Parent $psd1
           $leaf = Split-Path -Leaf $moduleRoot
 
           if ($leaf -ne $moduleName) {
-            # Create a staging folder named exactly like the module
+            # Stage a folder named exactly like the module
             $stage = Join-Path $env:RUNNER_TEMP $moduleName
             if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-            New-Item -ItemType Directory -Path $stage |
+            New-Item -ItemType Directory -Path $stage | Out-Null
+
+            Copy-Item (Join-Path $moduleRoot "$moduleName.psd1") $stage -Force
+            Copy-Item (Join-Path $moduleRoot "$moduleName.psm1") $stage -Force
+
+            foreach ($sub in 'Public','Private','config','tools') {
+              $p = Join-Path $moduleRoot $sub
+              if (Test-Path $p) { Copy-Item $p $stage -Recurse -Force }
+            }
+            $pathToZip = $stage
+          } else {
+            $pathToZip = $moduleRoot
+          }
+
+          if (Test-Path $zipName) { Remove-Item $zipName -Force }
+          Compress-Archive -Path $pathToZip -DestinationPath $zipName -Force
+
+          $bootstrap = 'tools/KXGT-Bootstrap.ps1'
+          if (-not (Test-Path $bootstrap)) {
+            throw "Bootstrap script not found at $bootstrap"
+          }
+
+          "ZIP_PATH=$zipName"         | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BOOTSTRAP_PATH=$bootstrap" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Create GitHub Release (attach ZIP + Bootstrap)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.BOOTSTRAP_PATH }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
