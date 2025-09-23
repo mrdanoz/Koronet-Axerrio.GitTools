@@ -37,32 +37,55 @@ jobs:
             throw "ModuleVersion ($env:MOD_VER) does not match tag v$tag"
           }
 
-      - name: Build ZIP
+name: Build Module ZIP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-zip:
+    runs-on: windows-latest
+    defaults:
+      run:
         shell: pwsh
+
+    # Set this to your actual .psd1 path in the repo
+    env:
+      PSD1_PATH: path/to/Koronet-Axerrio.GitTools/Koronet-Axerrio.GitTools.psd1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build ZIP (package full module folder)
         run: |
           $ErrorActionPreference = 'Stop'
-          $moduleName = 'Koronet-Axerrio.GitTools'
-          $psd1 = "${{ env.PSD1_PATH }}"
-          $zipName = if ($env:GITHUB_REF_NAME) { "$moduleName-${{ github.ref_name }}.zip" } else { "$moduleName-manual.zip" }
-          $moduleRoot = Split-Path -Parent $psd1
-          $leaf = Split-Path -Leaf $moduleRoot
-          if ($leaf -ne $moduleName) {
-            $stage = Join-Path $env:RUNNER_TEMP $moduleName
-            if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-            New-Item -ItemType Directory -Path $stage | Out-Null
-            Copy-Item (Join-Path $moduleRoot "$moduleName.psd1") $stage -Force
-            Copy-Item (Join-Path $moduleRoot "$moduleName.psm1") $stage -Force
-            foreach ($sub in 'Public','Private','config','tools') {
-              $p = Join-Path $moduleRoot $sub
-              if (Test-Path $p) { Copy-Item $p $stage -Recurse -Force }
-            }
-            $pathToZip = $stage
-          } else {
-            $pathToZip = $moduleRoot
-          }
+          $moduleName  = 'Koronet-Axerrio.GitTools'
+          $psd1        = "${{ env.PSD1_PATH }}"
+          $moduleRoot  = Split-Path -Parent $psd1
+          $parent      = Split-Path -Parent $moduleRoot
+          $zipName     = if ($env:GITHUB_REF_NAME) { "$moduleName-${{ github.ref_name }}.zip" } else { "$moduleName-manual.zip" }
+
+          # sanity: these usually exist
+          if (-not (Test-Path (Join-Path $moduleRoot 'Public')))  { Write-Warning "Missing 'Public' folder under $moduleRoot" }
+          if (-not (Test-Path (Join-Path $moduleRoot 'Private'))) { Write-Warning "Missing 'Private' folder under $moduleRoot" }
+
+          # zip the FOLDER so the archive contains a top-level Koronet-Axerrio.GitTools/
+          Push-Location $parent
           if (Test-Path $zipName) { Remove-Item $zipName -Force }
-          Compress-Archive -Path $pathToZip -DestinationPath $zipName -Force
+          Compress-Archive -Path $moduleName -DestinationPath (Join-Path $PWD $zipName) -Force
+          Pop-Location
+
+          # log what we packed (helpful for debugging)
+          Get-ChildItem $moduleRoot -Recurse | Select-Object FullName
+
           "ZIP_PATH=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: koronet-axerrio-gittools-zip
+          path: ${{ env.ZIP_PATH }}
 
       - name: Ensure bootstrap exists
         shell: pwsh
