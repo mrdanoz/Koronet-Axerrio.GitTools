@@ -3,12 +3,11 @@ name: release-module-zip
 on:
   push:
     tags: ['v*']
-  workflow_dispatch: {}   # lets you test manually from the Actions tab
+  workflow_dispatch: {}
 
 jobs:
   build-and-release:
     runs-on: windows-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,26 +22,20 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-      
-          # Find the psd1 anywhere under the repo
           $psd1Item = Get-ChildItem -Recurse -File -Filter 'Koronet-Axerrio.GitTools.psd1' | Select-Object -First 1
           if (-not $psd1Item) { throw "psd1 not found anywhere in repo" }
           $psd1 = $psd1Item.FullName
-      
-          # Parse the PSD1 without validation
           $data = Import-PowerShellDataFile -Path $psd1
-          if (-not $data) { throw "Import-PowerShellDataFile returned `$null for $psd1" }
-          if (-not $data.ModuleVersion) { throw "ModuleVersion missing in $psd1" }
-      
-          # (Optional) sanity-check RootModule looks right
+          if (-not $data -or -not $data.ModuleVersion) { throw "ModuleVersion missing in $psd1" }
+
+          "PSD1_PATH=$psd1"                | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MOD_VER=$($data.ModuleVersion)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
           if ($data.RootModule -and ($data.RootModule -notmatch '^[^\\/]+\.psm1$')) {
-            Write-Warning "RootModule should be just the file name (e.g., Koronet-Axerrio.GitTools.psm1). Current: '$($data.RootModule)'"
+            Write-Warning "RootModule should be just the file name (e.g., Koronet-Axerrio.GitTools.psm1). Current: '$($data.RootModule)'."
           }
-      
-          "PSD1_PATH=$psd1"                      | Out-File -FilePath $env:GITHUB_ENV -Append
-          "MOD_VER=$($data.ModuleVersion)"       | Out-File -FilePath $env:GITHUB_ENV -Append
-      
-      - name: Enforce tag == ModuleVersion (only on tag runs)
+
+      - name: Enforce tag == ModuleVersion
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
@@ -51,7 +44,7 @@ jobs:
           if ("${{ env.MOD_VER }}" -ne $tag) {
             throw "ModuleVersion ($env:MOD_VER) does not match tag v$tag"
           }
-      
+
       - name: Optional: validate manifest (warn only)
         shell: pwsh
         continue-on-error: true
@@ -63,29 +56,24 @@ jobs:
             Write-Warning "Test-ModuleManifest warning: $($_.Exception.Message)"
           }
 
-
       - name: Build ZIP (stage module folder if needed)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-
-          $psd1 = "${{ env.PSD1_PATH }}"
           $moduleName = 'Koronet-Axerrio.GitTools'
-          $zipName    = "$moduleName-${{ github.ref_name }}.zip"
+          $psd1 = "${{ env.PSD1_PATH }}"
+          $zipName = "$moduleName-${{ github.ref_name }}.zip"
           if (-not $env:GITHUB_REF_NAME) { $zipName = "$moduleName-manual.zip" }
 
           $moduleRoot = Split-Path -Parent $psd1
           $leaf = Split-Path -Leaf $moduleRoot
-
           if ($leaf -ne $moduleName) {
-            # Stage a folder named exactly like the module
             $stage = Join-Path $env:RUNNER_TEMP $moduleName
             if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
             New-Item -ItemType Directory -Path $stage | Out-Null
 
             Copy-Item (Join-Path $moduleRoot "$moduleName.psd1") $stage -Force
             Copy-Item (Join-Path $moduleRoot "$moduleName.psm1") $stage -Force
-
             foreach ($sub in 'Public','Private','config','tools') {
               $p = Join-Path $moduleRoot $sub
               if (Test-Path $p) { Copy-Item $p $stage -Recurse -Force }
@@ -99,9 +87,7 @@ jobs:
           Compress-Archive -Path $pathToZip -DestinationPath $zipName -Force
 
           $bootstrap = 'tools/KXGT-Bootstrap.ps1'
-          if (-not (Test-Path $bootstrap)) {
-            throw "Bootstrap script not found at $bootstrap"
-          }
+          if (-not (Test-Path $bootstrap)) { throw "Bootstrap script not found at $bootstrap" }
 
           "ZIP_PATH=$zipName"         | Out-File -FilePath $env:GITHUB_ENV -Append
           "BOOTSTRAP_PATH=$bootstrap" | Out-File -FilePath $env:GITHUB_ENV -Append
