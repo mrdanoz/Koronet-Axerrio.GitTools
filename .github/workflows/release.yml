@@ -12,13 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Debug repo layout
-        shell: pwsh
-        run: |
-          Write-Host "ref: $env:GITHUB_REF_NAME"
-          Get-ChildItem -Recurse -File | Select-Object FullName
-
-      - name: Locate psd1 and read version (robust)
+      - name: Locate psd1 and read version
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -27,16 +21,14 @@ jobs:
           $psd1 = $psd1Item.FullName
           $data = Import-PowerShellDataFile -Path $psd1
           if (-not $data -or -not $data.ModuleVersion) { throw "ModuleVersion missing in $psd1" }
-
           "PSD1_PATH=$psd1"                | Out-File -FilePath $env:GITHUB_ENV -Append
           "MOD_VER=$($data.ModuleVersion)" | Out-File -FilePath $env:GITHUB_ENV -Append
-
           if ($data.RootModule -and ($data.RootModule -notmatch '^[^\\/]+\.psm1$')) {
             Write-Warning "RootModule should be just the file name (e.g., Koronet-Axerrio.GitTools.psm1). Current: '$($data.RootModule)'."
           }
 
-      - name: Enforce tag == ModuleVersion
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Enforce tag matches ModuleVersion
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -45,33 +37,19 @@ jobs:
             throw "ModuleVersion ($env:MOD_VER) does not match tag v$tag"
           }
 
-      - name: Optional: validate manifest (warn only)
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          try {
-            $null = Test-ModuleManifest "${{ env.PSD1_PATH }}" -ErrorAction Stop
-            Write-Host "Test-ModuleManifest: OK"
-          } catch {
-            Write-Warning "Test-ModuleManifest warning: $($_.Exception.Message)"
-          }
-
-      - name: Build ZIP (stage module folder if needed)
+      - name: Build ZIP
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $moduleName = 'Koronet-Axerrio.GitTools'
           $psd1 = "${{ env.PSD1_PATH }}"
-          $zipName = "$moduleName-${{ github.ref_name }}.zip"
-          if (-not $env:GITHUB_REF_NAME) { $zipName = "$moduleName-manual.zip" }
-
+          $zipName = if ($env:GITHUB_REF_NAME) { "$moduleName-${{ github.ref_name }}.zip" } else { "$moduleName-manual.zip" }
           $moduleRoot = Split-Path -Parent $psd1
           $leaf = Split-Path -Leaf $moduleRoot
           if ($leaf -ne $moduleName) {
             $stage = Join-Path $env:RUNNER_TEMP $moduleName
             if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
             New-Item -ItemType Directory -Path $stage | Out-Null
-
             Copy-Item (Join-Path $moduleRoot "$moduleName.psd1") $stage -Force
             Copy-Item (Join-Path $moduleRoot "$moduleName.psm1") $stage -Force
             foreach ($sub in 'Public','Private','config','tools') {
@@ -82,15 +60,15 @@ jobs:
           } else {
             $pathToZip = $moduleRoot
           }
-
           if (Test-Path $zipName) { Remove-Item $zipName -Force }
           Compress-Archive -Path $pathToZip -DestinationPath $zipName -Force
+          "ZIP_PATH=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-          $bootstrap = 'tools/KXGT-Bootstrap.ps1'
-          if (-not (Test-Path $bootstrap)) { throw "Bootstrap script not found at $bootstrap" }
-
-          "ZIP_PATH=$zipName"         | Out-File -FilePath $env:GITHUB_ENV -Append
-          "BOOTSTRAP_PATH=$bootstrap" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Ensure bootstrap exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'tools/KXGT-Bootstrap.ps1')) { throw "Bootstrap script not found at tools/KXGT-Bootstrap.ps1" }
+          "BOOTSTRAP_PATH=tools/KXGT-Bootstrap.ps1" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Create GitHub Release (attach ZIP + Bootstrap)
         uses: softprops/action-gh-release@v2
