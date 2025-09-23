@@ -37,26 +37,6 @@ jobs:
             throw "ModuleVersion ($env:MOD_VER) does not match tag v$tag"
           }
 
-name: Build Module ZIP
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build-zip:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
-
-    # Set this to your actual .psd1 path in the repo
-    env:
-      PSD1_PATH: path/to/Koronet-Axerrio.GitTools/Koronet-Axerrio.GitTools.psd1
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Build ZIP (package full module folder)
         run: |
           $ErrorActionPreference = 'Stop'
