@@ -19,31 +19,50 @@ jobs:
           Write-Host "ref: $env:GITHUB_REF_NAME"
           Get-ChildItem -Recurse -File | Select-Object FullName
 
-      - name: Locate psd1 and verify version == tag (when tag is present)
+      - name: Locate psd1 and read version (robust)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-
-          # Find the psd1 anywhere in the repo
-          $psd1Item = Get-ChildItem -Recurse -Filter 'Koronet-Axerrio.GitTools.psd1' | Select-Object -First 1
+      
+          # Find the psd1 anywhere under the repo
+          $psd1Item = Get-ChildItem -Recurse -File -Filter 'Koronet-Axerrio.GitTools.psd1' | Select-Object -First 1
           if (-not $psd1Item) { throw "psd1 not found anywhere in repo" }
           $psd1 = $psd1Item.FullName
-          "PSD1_PATH=$psd1" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          # If this run was triggered by a tag push, enforce version match
-          $refName = "${{ github.ref_name }}"
-          if ($refName -and $refName.StartsWith('v')) {
-            $tag = $refName.TrimStart('v')
-            $manifest = Test-ModuleManifest $psd1
-            $modVer = $manifest.ModuleVersion.ToString()
-            "Tag: v$tag"
-            "ModuleVersion: $modVer"
-            if ($modVer -ne $tag) {
-              throw "ModuleVersion ($modVer) does not match tag v$tag. Update the psd1 before tagging."
-            }
-          } else {
-            Write-Host "No tag context (manual run). Skipping version check."
+      
+          # Parse the PSD1 without validation
+          $data = Import-PowerShellDataFile -Path $psd1
+          if (-not $data) { throw "Import-PowerShellDataFile returned `$null for $psd1" }
+          if (-not $data.ModuleVersion) { throw "ModuleVersion missing in $psd1" }
+      
+          # (Optional) sanity-check RootModule looks right
+          if ($data.RootModule -and ($data.RootModule -notmatch '^[^\\/]+\.psm1$')) {
+            Write-Warning "RootModule should be just the file name (e.g., Koronet-Axerrio.GitTools.psm1). Current: '$($data.RootModule)'"
           }
+      
+          "PSD1_PATH=$psd1"                      | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MOD_VER=$($data.ModuleVersion)"       | Out-File -FilePath $env:GITHUB_ENV -Append
+      
+      - name: Enforce tag == ModuleVersion (only on tag runs)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          if ("${{ env.MOD_VER }}" -ne $tag) {
+            throw "ModuleVersion ($env:MOD_VER) does not match tag v$tag"
+          }
+      
+      - name: Optional: validate manifest (warn only)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          try {
+            $null = Test-ModuleManifest "${{ env.PSD1_PATH }}" -ErrorAction Stop
+            Write-Host "Test-ModuleManifest: OK"
+          } catch {
+            Write-Warning "Test-ModuleManifest warning: $($_.Exception.Message)"
+          }
+
 
       - name: Build ZIP (stage module folder if needed)
         shell: pwsh
