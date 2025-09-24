@@ -39,10 +39,19 @@ if (Test-Path $publicDir) {
 }
 
 # Fallback: if no Public/*.ps1 were found, export the known commands (best-effort)
-if (-not $exportList -or $exportList.Count -eq 0) {
-    $exportList = @('New-KXGTFeatureBranch','New-KXGTPullRequest','Complete-KXGTPullRequest')
-}
+#if (-not $exportList -or $exportList.Count -eq 0) {
+#    $exportList = @('New-KXGTFeatureBranch','New-KXGTPullRequest','Complete-KXGTPullRequest','Get-KXGTConfig')
+#}
 
 # --- Export only the intended public functions ---
 # (The manifest can also restrict exports; this keeps runtime aligned with your Public folder.)
-Export-ModuleMember -Function $exportList -ErrorAction SilentlyContinue
+Export-ModuleMember -Function @(
+  'New-KXGTFeatureBranch',
+  'Invoke-KXGTPush',
+  'New-KXGTPullRequest',
+  # include these only if you want them public:
+  'Get-KXGTConfig'
+  # 'Initialize-KXGTUserConfig',
+  # 'Set-KXGTConfig',
+  # 'Show-KXGTConfig'
+) -Alias @()

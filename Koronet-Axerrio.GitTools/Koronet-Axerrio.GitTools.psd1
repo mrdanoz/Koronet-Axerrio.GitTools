@@ -1,6 +1,6 @@
 @{
     RootModule = 'Koronet-Axerrio.GitTools.psm1'
-    ModuleVersion = '0.8.6'
+    ModuleVersion = '0.8.7'
     GUID = 'd2a5b3e6-0000-4c3a-9a2b-5f7a12345678'
     Author = 'Koronet - Daniel de Haan'
     CompanyName = 'Koronet'
@@ -8,11 +8,7 @@
     # Kies een brede minimumversie voor compatibiliteit
     PowerShellVersion = '5.1'
 
-    FunctionsToExport = @(
-    'New-KXGTFeatureBranch',
-    'New-KXGTPullRequest',
-    'Complete-KXGTPullRequest'
-    )
+    FunctionsToExport = '*'
     AliasesToExport   = @()
     CmdletsToExport   = @()
     VariablesToExport = @()
