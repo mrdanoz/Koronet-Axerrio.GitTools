@@ -1,39 +1,48 @@
-# Koronet-Axerrio.GitTools.psm1 — loader (exports only 3 public commands)
+# Koronet-Axerrio.GitTools.psm1
+# Loads Private/ then Public/ scripts and exports functions by filename.
+# Works even if executed outside true module context (dev convenience).
 
-Set-StrictMode -Version Latest
-
-# Soft hint: SqlServer module is handy but not required to import
-if (-not (Get-Module -ListAvailable -Name SqlServer)) {
-  Write-Verbose "[KXGT] Tip: Install-Module SqlServer -Scope CurrentUser"
+# Resolve module root robustly
+$Script:ModuleRoot = if ($PSScriptRoot) {
+    $PSScriptRoot
+} elseif ($PSCommandPath) {
+    Split-Path -Parent $PSCommandPath
+} else {
+    Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
-# 1) Dot-source Private first
-$privateDir = Join-Path $PSScriptRoot 'Private'
+# --- Load Private helpers first ---
+$privateDir = Join-Path $Script:ModuleRoot 'Private'
 if (Test-Path $privateDir) {
-  Get-ChildItem -Path $privateDir -Filter *.ps1 -File | ForEach-Object { . $_.FullName }
+    Get-ChildItem -Path $privateDir -Filter *.ps1 -File | ForEach-Object {
+        try {
+            . $_.FullName
+        } catch {
+            throw "Failed to load private script '$($_.Name)': $($_.Exception.Message)"
+        }
+    }
 }
 
-# 2) Dot-source Public next
-$publicDir = Join-Path $PSScriptRoot 'Public'
-$publicFiles = @()
+# --- Load Public functions and collect names to export ---
+$exportList = @()
+$publicDir  = Join-Path $Script:ModuleRoot 'Public'
 if (Test-Path $publicDir) {
-  $publicFiles = Get-ChildItem -Path $publicDir -Filter *.ps1 -File
-  foreach ($f in $publicFiles) { . $f.FullName }
+    $publicFiles = Get-ChildItem -Path $publicDir -Filter *.ps1 -File | Sort-Object Name
+    foreach ($file in $publicFiles) {
+        try {
+            . $file.FullName
+            $exportList += [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+        } catch {
+            throw "Failed to load public script '$($file.Name)': $($_.Exception.Message)"
+        }
+    }
 }
 
-# 3) Determine which functions came from the Public folder (robust; not relying on filenames)
-$publicFuncInfos = Get-ChildItem function:\ | Where-Object {
-  $_.ScriptBlock -and $_.ScriptBlock.File -and (
-    (Split-Path $_.ScriptBlock.File -Parent) -like ($publicDir + '*')
-  )
+# Fallback: if no Public/*.ps1 were found, export the known commands (best-effort)
+if (-not $exportList -or $exportList.Count -eq 0) {
+    $exportList = @('New-KXGTFeatureBranch','New-KXGTPullRequest','Complete-KXGTPullRequest')
 }
 
-$haveNames = $publicFuncInfos.Name
-
-# We only want these three to be public:
-$wantNames = @('New-KXGTFeatureBranch','New-KXGTPullRequest','Complete-KXGTPullRequest')
-
-# Export the intersection (and nothing else)
-$exportNames = $wantNames | Where-Object { $haveNames -contains $_ }
-
-Export-ModuleMember -Function $exportNames
+# --- Export only the intended public functions ---
+# (The manifest can also restrict exports; this keeps runtime aligned with your Public folder.)
+Export-ModuleMember -Function $exportList -ErrorAction SilentlyContinue
