@@ -49,7 +49,7 @@ Export-ModuleMember -Function @(
   'New-KXGTFeatureBranch',
   'Invoke-KXGTPush',
   'New-KXGTPullRequest',
-  # include these only if you want them public:
+  'Complete-KXGTPullRequest',
   'Get-KXGTConfig'
   # 'Initialize-KXGTUserConfig',
   # 'Set-KXGTConfig',
