@@ -1,6 +1,18 @@
 # Private/Get-KXGTConfig.ps1
-# PS5.1-safe. Per-user config with first-run bootstrap.
-# Repo-scoped config is opt-in (AllowRepoConfig), so configs don't end up in Git.
+# PS5.1-safe. Per-user config with first-run bootstrap using Read-Host.
+# Canonical schema (no back-compat):
+#   - defaultRepoPath
+#   - remoteRepoUrl
+#   - defaultBaseBranch
+#   - auditServer
+#   - auditDatabase
+#   - auditSchema
+#   - projectLayout  (dbForge | SSDT)
+#
+# Notes:
+# - The per-user config lives under %APPDATA%\KXGT\config.json
+# - Repo-scoped config (under .kxgt\kxgt.config.json) is read ONLY if -AllowRepoConfig is passed.
+# - We intentionally do NOT use older keys like RepoPath/ServerInstance/Database.
 
 # Cache for this session
 $Script:KxgtConfigCache = $null
@@ -8,9 +20,9 @@ $Script:KxgtConfigCache = $null
 function Get-KXGTConfig {
     [CmdletBinding()]
     param(
-        [string]$RepoPath,        # Optional: working tree path (used for seeding/override)
+        [string]$RepoPath,        # Optional: working tree path (used to seed defaultRepoPath or find repo config)
         [switch]$ForceReload,     # Re-read from disk and refresh cache
-        [switch]$Interactive,     # Force prompts if host is interactive
+        [switch]$Interactive,     # Force prompts if host is interactive and file missing
         [switch]$AllowRepoConfig  # Only then read .kxgt/kxgt.config.json from the repo
     )
 
@@ -21,61 +33,50 @@ function Get-KXGTConfig {
     # --- helpers -------------------------------------------------------------
     function _KXGT-ReadJson([string]$path) {
         if (-not $path -or -not (Test-Path -LiteralPath $path)) { return $null }
-        try { return (Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json) }
-        catch { Write-Verbose "KXGT: Failed to parse '$path' : $_"; return $null }
+        try { return (Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { return $null }
     }
 
-    function _KXGT-EnsureUserDir() {
-        if ($env:APPDATA -and (Test-Path Env:\APPDATA)) {
-            $dir = Join-Path $env:APPDATA 'KXGT'
-        } else {
-            $dir = Join-Path $HOME '.config/kxgt'
-        }
+    function _KXGT-WriteJson([hashtable]$obj, [string]$path) {
+        $dir = Split-Path -Parent $path
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        return $dir
+        ($obj | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $path -Encoding UTF8
     }
 
-    function _KXGT-WriteUserConfig([hashtable]$obj) {
-        $dir  = _KXGT-EnsureUserDir
-        $path = Join-Path $dir 'kxgt.config.json'
-        ($obj | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $path -Encoding UTF8
-        return $path
-    }
+    function _KXGT-IsInteractive { return $Host.UI -and $Host.UI.RawUI -and $Interactive }
 
-    function _KXGT-Prompt([string]$label, [string]$current) {
-        if (-not $current) { $current = '' }
-        $prompt = if ($current -ne '') { "$label [$current]" } else { $label }
-        $v = Read-Host $prompt
-        if ($v -and ($v.Trim() -ne '')) { return $v } else { return $current }
-    }
-
-    function _KXGT-IsInteractive() {
-        if ($PSBoundParameters.ContainsKey('Interactive') -and $Interactive.IsPresent) { return $true }
-        return ($Host.Name -match 'ConsoleHost|Visual Studio|VSCode|Windows Terminal')
-    }
-    # ------------------------------------------------------------------------
-
-    # Module root (this file lives in ...\Private\)
-    $moduleRoot = try { Split-Path -Parent $PSScriptRoot } catch { $PSScriptRoot }
-
-    # Candidate config paths (repo only when explicitly allowed)
-    $userCfg   = Join-Path (_KXGT-EnsureUserDir) 'kxgt.config.json'
-    $moduleCfg = Join-Path $moduleRoot 'kxgt.config.json'
-
-    $repoCfg = $null
-    if ($AllowRepoConfig) {
-        $repoRoot = $null
-        if ($RepoPath -and $RepoPath.Trim() -ne '') {
-            $repoRoot = $RepoPath
-        } elseif ($env:KXGT_REPOPATH -and $env:KXGT_REPOPATH.Trim() -ne '') {
-            $repoRoot = $env:KXGT_REPOPATH
+    function _KXGT-Prompt([string]$label, [string]$default = '', [switch]$Required) {
+        $prompt = if ($default) { "$label [$default]" } else { $label }
+        while ($true) {
+            $val = Read-Host $prompt
+            if ([string]::IsNullOrWhiteSpace($val)) { $val = $default }
+            if ($Required -and [string]::IsNullOrWhiteSpace($val)) {
+                Write-Host "Value required." -ForegroundColor Red
+            } else {
+                return $val
+            }
         }
-        if ($repoRoot) { $repoCfg = Join-Path (Join-Path $repoRoot '.kxgt') 'kxgt.config.json' }
     }
 
-    # Try in order: repo (opt-in) -> user -> module
+    function _KXGT-UserCfgPath {
+        $root = Join-Path $env:APPDATA 'KXGT'
+        if (-not (Test-Path -LiteralPath $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
+        return (Join-Path $root 'config.json')
+    }
+
+    function _KXGT-RepoCfgPath([string]$rp) {
+        if (-not $rp) { return $null }
+        $kxgtDir = Join-Path $rp '.kxgt'
+        return (Join-Path $kxgtDir 'kxgt.config.json')
+    }
+
+    # --- locate sources ------------------------------------------------------
+    $userCfg  = _KXGT-UserCfgPath
+    $repoCfg  = if ($AllowRepoConfig -and $RepoPath -and (Test-Path -LiteralPath $RepoPath)) { _KXGT-RepoCfgPath $RepoPath } else { $null }
+    $moduleCfg = $null  # Reserved for future use (e.g., default template under $PSScriptRoot)
+
     $json = $null
     $sourcePath = $null
+
     foreach ($p in @($repoCfg, $userCfg, $moduleCfg)) {
         if ($p) {
             $j = _KXGT-ReadJson $p
@@ -83,89 +84,83 @@ function Get-KXGTConfig {
         }
     }
 
-    # FIRST RUN: create a per-user config (never inside the repo)
+    # --- first run: create per-user config (never inside the repo) -----------
     if (-not $json) {
-        $seedRepo   = if     ($RepoPath -and $RepoPath.Trim() -ne '') { $RepoPath }
-                       elseif ($env:KXGT_REPOPATH -and $env:KXGT_REPOPATH.Trim() -ne '') { $env:KXGT_REPOPATH }
-                       else { 'C:\Working\Repo' }
-        $seedServer = if ($env:KXGT_SERVER   -and $env:KXGT_SERVER.Trim()   -ne '') { $env:KXGT_SERVER }   else { 'SQLDEV01' }
-        $seedDb     = if ($env:KXGT_DATABASE -and $env:KXGT_DATABASE.Trim() -ne '') { $env:KXGT_DATABASE } else { 'ABSDEV' }
-        $seedLayout = if ($env:KXGT_LAYOUT   -and $env:KXGT_LAYOUT.Trim()   -ne '') { $env:KXGT_LAYOUT }   else { 'dbForge' }
+        $seedRepoPath   = if     ($RepoPath -and $RepoPath.Trim() -ne '') { $RepoPath }
+                          elseif ($env:KXGT_REPOPATH   -and $env:KXGT_REPOPATH.Trim()   -ne '') { $env:KXGT_REPOPATH } else { 'C:\Dev\db-repo' }
+        $seedRemoteUrl  = if ($env:KXGT_REMOTEURL      -and $env:KXGT_REMOTEURL.Trim()  -ne '') { $env:KXGT_REMOTEURL } else { '' }
+        $seedBaseBranch = if ($env:KXGT_BASEBRANCH     -and $env:KXGT_BASEBRANCH.Trim() -ne '') { $env:KXGT_BASEBRANCH } else { 'develop' }
+        $seedServer     = if ($env:KXGT_AUDIT_SERVER   -and $env:KXGT_AUDIT_SERVER.Trim()   -ne '') { $env:KXGT_AUDIT_SERVER } else { 'SQLDEV01' }
+        $seedDatabase   = if ($env:KXGT_AUDIT_DATABASE -and $env:KXGT_AUDIT_DATABASE.Trim() -ne '') { $env:KXGT_AUDIT_DATABASE } else { 'ABSDEV_GIT_TEST' }
+        $seedSchema     = if ($env:KXGT_AUDIT_SCHEMA   -and $env:KXGT_AUDIT_SCHEMA.Trim()   -ne '') { $env:KXGT_AUDIT_SCHEMA } else { 'dba' }
+        $seedLayout     = if ($env:KXGT_PROJECT_LAYOUT -and $env:KXGT_PROJECT_LAYOUT.Trim() -ne '') { $env:KXGT_PROJECT_LAYOUT } else { 'dbForge' }
 
         if (_KXGT-IsInteractive) {
             Write-Host ""
             Write-Host "KXGT first-time setup — creating per-user config" -ForegroundColor Cyan
             Write-Host "(will be saved under $userCfg)`n"
-            $seedRepo   = _KXGT-Prompt 'Local repo path (e.g., C:\Working\ABS)' $seedRepo
-            $seedServer = _KXGT-Prompt 'SQL Server instance (e.g., SQLDEV01)'   $seedServer
-            $seedDb     = _KXGT-Prompt 'Database name (e.g., ABSDEV)'           $seedDb
-            $seedLayout = _KXGT-Prompt 'Project layout (dbForge/Flat/Loose)'     $seedLayout
+            # Gather values
+            while ($true) {
+                $seedRepoPath = _KXGT-Prompt 'Default repo path' $seedRepoPath -Required
+                if (Test-Path -LiteralPath $seedRepoPath) { break }
+                $mk = Read-Host "Path '$seedRepoPath' does not exist. Create it? [Y/N]"
+                if ($mk.ToUpperInvariant() -eq 'Y') {
+                    try { New-Item -ItemType Directory -Path $seedRepoPath -Force | Out-Null; break } catch { Write-Host "Failed: $($_.Exception.Message)" -ForegroundColor Red }
+                }
+            }
+            $seedRemoteUrl  = _KXGT-Prompt 'Remote repo URL (https://...)' $seedRemoteUrl
+            $seedBaseBranch = _KXGT-Prompt 'Default base branch' $seedBaseBranch -Required
+            $seedServer     = _KXGT-Prompt 'Audit SQL Server instance' $seedServer -Required
+            $seedDatabase   = _KXGT-Prompt 'Audit database' $seedDatabase -Required
+            $seedSchema     = _KXGT-Prompt 'Audit schema' $seedSchema -Required
+            while ($true) {
+                $tmp = _KXGT-Prompt 'Project layout (dbForge/SSDT)' $seedLayout -Required
+                if (@('DBFORGE','SSDT') -contains $tmp.ToUpperInvariant()) { $seedLayout = $tmp; break }
+                Write-Host "Please enter 'dbForge' or 'SSDT'." -ForegroundColor Red
+            }
         }
 
         $json = [ordered]@{
-            ServerInstance = $seedServer
-            Database       = $seedDb
-            RepoPath       = $seedRepo
-            ProjectLayout  = $seedLayout
+            defaultRepoPath   = $seedRepoPath
+            remoteRepoUrl     = $seedRemoteUrl
+            defaultBaseBranch = $seedBaseBranch
+            auditServer       = $seedServer
+            auditDatabase     = $seedDatabase
+            auditSchema       = $seedSchema
+            projectLayout     = $seedLayout
         }
 
-        $sourcePath = _KXGT-WriteUserConfig $json
-        Write-Verbose "KXGT: created per-user config at '$sourcePath'."
+        # Persist per-user file
+        _KXGT-WriteJson $json $userCfg
+        $sourcePath = $userCfg
     }
 
-    # Env var overrides and parameter precedence (env > param > file)
-    $server = if ($env:KXGT_SERVER   -and $env:KXGT_SERVER.Trim()   -ne '') { $env:KXGT_SERVER }   else { [string]$json.ServerInstance }
-    $db     = if ($env:KXGT_DATABASE -and $env:KXGT_DATABASE.Trim() -ne '') { $env:KXGT_DATABASE } else { [string]$json.Database }
-    $repo   = if ($env:KXGT_REPOPATH -and $env:KXGT_REPOPATH.Trim() -ne '') { $env:KXGT_REPOPATH }
-              elseif ($RepoPath -and $RepoPath.Trim() -ne '')               { $RepoPath }
-              else                                                           { [string]$json.RepoPath }
-    $layout = if ($env:KXGT_LAYOUT   -and $env:KXGT_LAYOUT.Trim()   -ne '') { $env:KXGT_LAYOUT }   else { [string]$json.ProjectLayout }
+    # --- validate minimal expectations ---------------------------------------
+    $notes = @()
+    if (-not $json.defaultRepoPath -or [string]::IsNullOrWhiteSpace([string]$json.defaultRepoPath)) { $notes += 'defaultRepoPath missing/empty' }
+    if (-not $json.defaultBaseBranch -or [string]::IsNullOrWhiteSpace([string]$json.defaultBaseBranch)) { $notes += 'defaultBaseBranch missing/empty' }
+    if (-not $json.auditServer -or [string]::IsNullOrWhiteSpace([string]$json.auditServer)) { $notes += 'auditServer missing/empty' }
+    if (-not $json.auditDatabase -or [string]::IsNullOrWhiteSpace([string]$json.auditDatabase)) { $notes += 'auditDatabase missing/empty' }
+    if (-not $json.auditSchema -or [string]::IsNullOrWhiteSpace([string]$json.auditSchema)) { $notes += 'auditSchema missing/empty' }
+    if (-not $json.projectLayout -or @('dbForge','SSDT') -notcontains [string]$json.projectLayout) { $notes += 'projectLayout invalid (dbForge/SSDT)' }
 
-    if (-not $layout -or $layout.Trim() -eq '') { $layout = 'SSDT' }
-    switch -Regex ($layout) {
-        '^(?i)ssdt$'   { $layout = 'SSDT' ; break }
-        '^(?i)flyway$' { $layout = 'dbForge' ; break }
-        '^(?i)loose$'  { $layout = 'Flat' ; break }
-        default        { $layout = 'dbForge' }
+    if ($notes.Count -gt 0) {
+        throw "Invalid KXGT config at '$sourcePath': $($notes -join '; ')"
     }
 
-    # Validate; if missing, prompt (interactive) or fill safe defaults (non-interactive)
-    $missing = @()
-    if (-not $server -or $server.Trim() -eq '') { $missing += 'ServerInstance' }
-    if (-not $db     -or $db.Trim()     -eq '') { $missing += 'Database' }
-    if (-not $repo   -or $repo.Trim()   -eq '') { $missing += 'RepoPath' }
-
-    if ($missing.Count -gt 0) {
-        if (_KXGT-IsInteractive) {
-            if ($missing -contains 'RepoPath')       { $repo   = _KXGT-Prompt 'Local repo path (e.g., C:\Working\ABS)' 'C:\Working\Repo' }
-            if ($missing -contains 'ServerInstance') { $server = _KXGT-Prompt 'SQL Server instance (e.g., SQLDEV01)'   'SQLDEV01' }
-            if ($missing -contains 'Database')       { $db     = _KXGT-Prompt 'Database name (e.g., ABSDEV)'           'ABSDEV' }
-            # Persist repaired values to user config only (never to repo/module files)
-            $persist = [ordered]@{
-                ServerInstance = $server
-                Database       = $db
-                RepoPath       = $repo
-                ProjectLayout  = $layout
-            }
-            $null = _KXGT-WriteUserConfig $persist
-            Write-Verbose "KXGT: repaired config and saved to user config."
-        } else {
-            if ($missing -contains 'RepoPath')       { $repo   = 'C:\Working\Repo' }
-            if ($missing -contains 'ServerInstance') { $server = 'SQLDEV01' }
-            if ($missing -contains 'Database')       { $db     = 'ABSDEV' }
-        }
-    }
-
-    # Final object
+    # --- final object to return ---------------------------------------------
     $cfg = [ordered]@{
-        ServerInstance = $server
-        Database       = $db
-        RepoPath       = $repo
-        ProjectLayout  = $layout
+        defaultRepoPath   = [string]$json.defaultRepoPath
+        remoteRepoUrl     = [string]$json.remoteRepoUrl
+        defaultBaseBranch = [string]$json.defaultBaseBranch
+        auditServer       = [string]$json.auditServer
+        auditDatabase     = [string]$json.auditDatabase
+        auditSchema       = [string]$json.auditSchema
+        projectLayout     = [string]$json.projectLayout
         # Uncomment if you want trace info:
-        # SourcePath   = $sourcePath
+        # SourcePath      = $sourcePath
     }
 
     $Script:KxgtConfigCache = $cfg
-    return $cfg
+    return [pscustomobject]$cfg
 }
