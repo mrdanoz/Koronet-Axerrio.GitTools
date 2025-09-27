@@ -79,6 +79,8 @@ jobs:
           files: |
             ${{ env.ZIP_PATH }}
             ${{ env.BOOTSTRAP_PATH }}
+            tools/Install-KXGTLatest.bat
+            tools/Uninstall-KXGTLocal.ps1
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
