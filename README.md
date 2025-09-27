@@ -49,10 +49,23 @@ A PowerShell 7+ toolkit for **database‑first** development on SQL Server, with
 - Database‑side audit in place (see [Database objects expected](#database-objects-expected)).
 
 ## Install / Import
-Place the module folder somewhere in `$env:PSModulePath` (or import by path) and:
-```powershell
-Import-Module Koronet-Axerrio.GitTools
-```
+
+Koronet-Axerrio.GitTools is distributed via GitHub releases as a ready-to-install PowerShell module.  
+Developers can install or update the module on any workstation or server using the options below.
+
+---
+
+### 🚀 One-Click Install (recommended)
+
+```bat
+:: 1️⃣ Run the provided batch file (auto-detects PowerShell 7 or 5.1)
+Install-KXGTLatest.bat
+
+:: ✅ Expected output
+=== Installing Koronet-Axerrio.GitTools (latest) ===
+Using: pwsh.exe
+Installing to: C:\Users\<User>\Documents\PowerShell\Modules
+Installed and imported: Koronet-Axerrio.GitTools
 
 ---
 
