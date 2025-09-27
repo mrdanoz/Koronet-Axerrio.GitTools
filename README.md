@@ -28,123 +28,129 @@ Developers can install or update it using the provided batch scripts or manually
 1. Download or clone this repository.  
 2. Open a command prompt and run:
 
-```bat
-Install-KXGTLatest.bat
+    Install-KXGTLatest.bat
+
 This script will:
 
-Detect PowerShell 7 (pwsh.exe) or fall back to Windows PowerShell 5.1
-
-Download the latest release ZIP from GitHub
-
-Extract it to your user’s PowerShell Modules folder
-
-PS 7 → Documents\PowerShell\Modules
-
-PS 5.1 → Documents\WindowsPowerShell\Modules
-
-Import the module and confirm successful installation
+- Detect PowerShell 7 (pwsh.exe) or fall back to Windows PowerShell 5.1  
+- Download the latest release ZIP from GitHub  
+- Extract it to your user’s PowerShell Modules folder  
+  - PS 7 → Documents\PowerShell\Modules  
+  - PS 5.1 → Documents\WindowsPowerShell\Modules  
+- Import the module and confirm successful installation  
 
 Re-running Install-KXGTLatest.bat will always update to the newest release automatically.
 
-🧹 Clean Uninstall
-If you’ve tested earlier versions, run this first to remove all local copies (including any under OneDrive)
+---
+
+## 🧹 Clean Uninstall
+
+If you’ve tested earlier versions, run this first to remove all local copies (including any under OneDrive)  
 and optionally clear the configuration file:
 
-bat
-Copier le code
-Uninstall-KXGTLocal.bat -RemoveConfig
--RemoveConfig deletes your local JSON configuration, so the module will prompt you for new values on the next run.
+    Uninstall-KXGTLocal.bat -RemoveConfig
 
-No admin rights are required unless you previously installed the module system-wide.
+- -RemoveConfig deletes your local JSON configuration, so the module will prompt you for new values on the next run.  
+- No admin rights are required unless you previously installed the module system-wide.
 
-📦 Manual Install (Offline)
+---
+
+## 📦 Manual Install (Offline)
+
 If you can’t use the batch installer:
 
-Download the latest release ZIP from
-https://github.com/mrdanoz/Koronet-Axerrio.GitTools/releases
+1. Download the latest release ZIP from  
+   https://github.com/mrdanoz/Koronet-Axerrio.GitTools/releases
 
-Unblock and extract it:
+2. Unblock and extract it:
 
-powershell
-Copier le code
-Unblock-File "$env:USERPROFILE\Downloads\Koronet-Axerrio.GitTools-v0.10.1.zip"
-Expand-Archive "$env:USERPROFILE\Downloads\Koronet-Axerrio.GitTools-v0.10.1.zip" `
-  -DestinationPath "$env:USERPROFILE\Documents\PowerShell\Modules" -Force
-Import and verify:
+    Unblock-File "$env:USERPROFILE\Downloads\Koronet-Axerrio.GitTools-v0.10.1.zip"  
+    Expand-Archive "$env:USERPROFILE\Downloads\Koronet-Axerrio.GitTools-v0.10.1.zip" `
+    -DestinationPath "$env:USERPROFILE\Documents\PowerShell\Modules" -Force
 
-powershell
-Copier le code
-Import-Module Koronet-Axerrio.GitTools -Force
-Get-Command -Module Koronet-Axerrio.GitTools
-⚙️ Configuration
-On first use, the module checks for a local JSON configuration file.
+3. Import and verify:
+
+    Import-Module Koronet-Axerrio.GitTools -Force  
+    Get-Command -Module Koronet-Axerrio.GitTools
+
+---
+
+## ⚙️ Configuration
+
+On first use, the module checks for a local JSON configuration file.  
 If it doesn’t exist, it will prompt you to create one interactively.
 
 You can also create or reset it manually:
 
-powershell
-Copier le code
-Initialize-KXGTConfig
-Current JSON layout (v0.10.x and later)
-json
-Copier le code
-{
-  "defaultRepoPath": "V:\\Working\\DH\\abs-erp",
-  "remoteRepoUrl":  "https://github.com/your-org/abs-erp.git",
-  "defaultBaseBranch": "develop",
-  "auditServer": "SQLDEV01",
-  "auditDatabase": "ABSDEV",
-  "auditSchema": "dba",
-  "appNamePrefix": "KXGT-DEV-",
-  "defaultAppName": "KXGT-DEV-DH"
-}
-Notes
+    Initialize-KXGTConfig
 
-The configuration is local per developer — it is not stored in Git or in dba.Developer.
+### Current JSON layout (v0.10.x and later)
 
-dba.Developer now tracks only user identification
-(DisplayName, LoginName, GitHandle, EmailAddress, IsActive, etc.)
-and no longer contains a RepoPath column.
+    {
+      "defaultRepoPath": "V:\\Working\\DH\\abs-erp",
+      "remoteRepoUrl":  "https://github.com/your-org/abs-erp.git",
+      "defaultBaseBranch": "develop",
+      "auditServer": "SQLDEV01",
+      "auditDatabase": "ABSDEV",
+      "auditSchema": "dba",
+      "appNamePrefix": "KXGT-DEV-",
+      "defaultAppName": "KXGT-DEV-DH"
+    }
 
-All repository paths are resolved from defaultRepoPath in this JSON file.
+**Notes**
+- The configuration is local per developer — it is not stored in Git or in dba.Developer.  
+- dba.Developer now tracks only user identification  
+  (DisplayName, LoginName, GitHandle, EmailAddress, IsActive, etc.)  
+  and no longer contains a RepoPath column.  
+- All repository paths are resolved from defaultRepoPath in this JSON file.
 
 To view or verify your current configuration:
 
-powershell
-Copier le code
-Get-KXGTConfig
-🧪 Verification
+    Get-KXGTConfig
+
+---
+
+## 🧪 Verification
+
 After installation, confirm the module is loaded:
 
-powershell
-Copier le code
-Get-Module Koronet-Axerrio.GitTools -ListAvailable
+    Get-Module Koronet-Axerrio.GitTools -ListAvailable
+
 Expected output:
 
-pgsql
-Copier le code
-ModuleType Version Name                        ExportedCommands
----------- ------- ----                        ----------------
-Script     0.10.1  Koronet-Axerrio.GitTools    {Get-KXGTConfig, New-KXGTFeatureBranch, New-KXGTPullRequest, Complete-KXGTPullRequest, Invoke-KXGTPush}
+    ModuleType Version Name                        ExportedCommands
+    ---------- ------- ----                        ----------------
+    Script     0.10.1  Koronet-Axerrio.GitTools    {Get-KXGTConfig, New-KXGTFeatureBranch, New-KXGTPullRequest, Complete-KXGTPullRequest, Invoke-KXGTPush}
+
 Test a basic operation:
 
-powershell
-Copier le code
-New-KXGTFeatureBranch -FeatureName "Test-Feature" -WhatIf
+    New-KXGTFeatureBranch -FeatureName "Test-Feature" -WhatIf
+
 If no errors appear, the installation and configuration are correct.
 
-📦 Files Included in the Release
-File	Purpose
-Koronet-Axerrio.GitTools-vX.Y.Z.zip	Main module package
-tools/KXGT-Bootstrap.ps1	Stand-alone PowerShell bootstrapper (optional)
-tools/Install-KXGTLatest.bat	One-click installer (recommended)
-tools/Uninstall-KXGTLocal.bat	Full uninstaller / config reset
+---
 
-🆘 Support
+## 📦 Files Included in the Release
+
+| File | Purpose |
+|------|----------|
+| **Koronet-Axerrio.GitTools-vX.Y.Z.zip** | Main module package |
+| **tools/KXGT-Bootstrap.ps1** | Stand-alone PowerShell bootstrapper (optional) |
+| **tools/Install-KXGTLatest.bat** | One-click installer (recommended) |
+| **tools/Uninstall-KXGTLocal.bat** | Full uninstaller / config reset |
+
+---
+
+## 🆘 Support
+
 If installation or configuration fails:
 
-Run Uninstall-KXGTLocal.bat to clean old versions
+1. Run Uninstall-KXGTLocal.bat to clean old versions  
+2. Reinstall with Install-KXGTLatest.bat  
+3. If issues persist, open an issue on GitHub or contact the DBA/DevOps maintainer
 
-Reinstall with Install-KXGTLatest.bat
+---
 
-If issues persist, open an issue on GitHub or contact the DBA/DevOps maintainer
+**Version:** 0.10.1  
+**Maintainer:** Koronet / Axerrio DevOps  
+**License:** Internal use only
