@@ -140,6 +140,30 @@ If no errors appear, the installation and configuration are correct.
 | **tools/Uninstall-KXGTLocal.bat** | Full uninstaller / config reset |
 
 ---
+---
+
+## 📁 Recommended Module Location
+
+PowerShell can load modules from several folders.  
+To avoid issues with **OneDrive syncing**, the recommended location for this module is:
+
+
+### 🧠 Why use the local *Documents* folder
+- ✅ **Stable path** — not affected by OneDrive renaming (`Documenten` / `Documents`)
+- ✅ **Offline-friendly** — works even if OneDrive is paused or disconnected
+- ✅ **No file locks** — OneDrive sync can lock `.ps1` / `.psm1` files
+- ✅ **Predictable** — same path for all developers, simplifies scripts and automation
+
+### ☁️ If your company enforces OneDrive
+If your *Documents* folder is automatically redirected to OneDrive, this module still works,  
+but you should verify that PowerShell can see it. Run this once in PowerShell 7:
+
+```powershell
+# Ensure PowerShell 7 includes your user modules path
+$modPath = "$HOME\Documents\PowerShell\Modules"
+if ($env:PSModulePath -notmatch [regex]::Escape($modPath)) {
+  $env:PSModulePath = "$modPath;$env:PSModulePath"
+}
 
 ## 🆘 Support
 
