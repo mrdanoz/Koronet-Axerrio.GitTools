@@ -71,8 +71,25 @@ jobs:
       - name: Ensure bootstrap exists
         shell: pwsh
         run: |
-          if (-not (Test-Path 'tools/KXGT-BootStrap.ps1')) { throw "Bootstrap script not found at tools/KXGT-Bootstrap.ps1" }
-          "BOOTSTRAP_PATH=tools/KXGT-BootStrap.ps1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ErrorActionPreference = 'Stop'
+
+          $bootstrapRel = 'tools/KXGT-BootStrap.ps1'
+          $bootstrapAbs = Join-Path $PWD $bootstrapRel
+
+          if (-not (Test-Path $bootstrapAbs)) {
+          # Fail only on main or release branches; warn otherwise
+           if ($env:GITHUB_REF_NAME -match '^(main|release|v\d+)') {
+            throw "Bootstrap script not found: $bootstrapRel (expected at $bootstrapAbs)"
+           } else {
+            Write-Warning "Bootstrap script not found at $bootstrapRel — continuing (non-release branch)."
+          }
+           } else {
+            Write-Host "Bootstrap script found: $bootstrapRel"
+            # Export normalized path for later steps
+            $normalized = $bootstrapAbs -replace '\\','/'
+            "BOOTSTRAP_PATH=$normalized" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Write-Host "BOOTSTRAP_PATH exported: $normalized"
+          }
 
       - name: Create GitHub Release (attach ZIP + Bootstrap)
         uses: softprops/action-gh-release@v2
