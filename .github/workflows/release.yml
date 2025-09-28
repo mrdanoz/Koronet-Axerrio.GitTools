@@ -73,19 +73,27 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $bootstrapRel = 'tools/KXGT-BootStrap.ps1'
-          $bootstrapAbs = Join-Path $PWD $bootstrapRel
-
-          if (-not (Test-Path $bootstrapAbs)) {
-          # Fail only on main or release branches; warn otherwise
-           if ($env:GITHUB_REF_NAME -match '^(main|release|v\d+)') {
-            throw "Bootstrap script not found: $bootstrapRel (expected at $bootstrapAbs)"
-           } else {
-            Write-Warning "Bootstrap script not found at $bootstrapRel — continuing (non-release branch)."
+          # Find the module root (folder that contains the PSD1)
+          if ($env:PSD1_PATH) {
+            $psd1 = Get-Item -LiteralPath $env:PSD1_PATH -ErrorAction Stop
+          } else {
+            $psd1 = Get-ChildItem -Path $PWD -Recurse -Filter 'Koronet-Axerrio.GitTools.psd1' | Select-Object -First 1
+            if (-not $psd1) { throw "Koronet-Axerrio.GitTools.psd1 not found under $PWD" }
           }
-           } else {
-            Write-Host "Bootstrap script found: $bootstrapRel"
-            # Export normalized path for later steps
+          $moduleRoot = $psd1.Directory.FullName
+
+          # Your declared path/casing
+          $bootstrapRel = 'tools/KXGT-BootStrap.ps1'
+          $bootstrapAbs = Join-Path $moduleRoot $bootstrapRel
+
+          if (-not (Test-Path -LiteralPath $bootstrapAbs)) {
+            if ($env:GITHUB_REF_NAME -match '^(main|release|v\d+)') {
+              throw "Bootstrap script not found: $bootstrapRel (looked in $moduleRoot)"
+            } else {
+              Write-Warning "Bootstrap script not found at $bootstrapRel — continuing (non-release branch)."
+            }
+          } else {
+            Write-Host "Bootstrap script found: $bootstrapRel under $moduleRoot"
             $normalized = $bootstrapAbs -replace '\\','/'
             "BOOTSTRAP_PATH=$normalized" | Out-File -FilePath $env:GITHUB_ENV -Append
             Write-Host "BOOTSTRAP_PATH exported: $normalized"
