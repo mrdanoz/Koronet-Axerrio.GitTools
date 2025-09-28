@@ -160,7 +160,7 @@ $modPath = "$HOME\Documents\PowerShell\Modules"
 if ($env:PSModulePath -notmatch [regex]::Escape($modPath)) {
   $env:PSModulePath = "$modPath;$env:PSModulePath"
 }
-```powershell
+---
 
 ## 🆘 Support
 
