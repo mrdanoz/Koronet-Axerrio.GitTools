@@ -105,8 +105,8 @@ jobs:
           files: |
             ${{ env.ZIP_PATH }}
             ${{ env.BOOTSTRAP_PATH }}
-            tools/Install-KXGTLatest.bat
-            tools/Uninstall-KXGTLocal.bat
+            Koronet-Axerrio.GitTools/tools/Install-KXGTLatest.bat
+            Koronet-Axerrio.GitTools/tools/Uninstall-KXGTLocal.bat
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
