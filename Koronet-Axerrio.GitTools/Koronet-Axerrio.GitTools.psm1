@@ -12,14 +12,19 @@ $Script:ModuleRoot = if ($PSScriptRoot) {
 }
 
 # --- Load Private helpers first ---
-$privateDir = Join-Path $Script:ModuleRoot 'Private'
+$privateDir = Join-Path $PSScriptRoot 'Private'
 if (Test-Path $privateDir) {
-    Get-ChildItem -Path $privateDir -Filter *.ps1 -File | ForEach-Object {
-        try {
-            . $_.FullName
-        } catch {
-            throw "Failed to load private script '$($_.Name)': $($_.Exception.Message)"
+    $privateFiles = Get-ChildItem -LiteralPath $privateDir -Filter *.ps1 -Recurse -ErrorAction SilentlyContinue
+    foreach ($file in $privateFiles) {
+        if ($PSVersionTable.PSVersion.Major -lt 7) {
+            # Skip scripts that look PS7-only (?? or ?.) or explicitly require v7
+            $raw = Get-Content -LiteralPath $file.FullName -Raw
+            if ($raw -match '(\?\?|\?\.)' -or $raw -match '^\s*#requires\s+-Version\s+7') {
+                Write-Verbose "Skipping PS7-only private script on PS5.1: $($file.Name)"
+                continue
+            }
         }
+        . $file.FullName
     }
 }
 
