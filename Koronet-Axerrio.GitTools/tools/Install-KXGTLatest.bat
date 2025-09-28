@@ -1,61 +1,71 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal
 
-REM --- CONFIG ---
-set "BOOTSTRAP_URL=https://raw.githubusercontent.com/<org>/<repo>/main/KXGT-bootstrap.ps1"
-set "BOOTSTRAP_NAME=KXGT-bootstrap.ps1"
+REM -----------------------------------------------------------------------------
+REM Install-KXGTLatest.bat
+REM - Calls the KXGT-Bootstrap.ps1 script (local if present, otherwise download).
+REM - No inline PowerShell runner; we always execute the bootstrap script file.
+REM -----------------------------------------------------------------------------
 
-REM --- Choose shell: prefer pwsh (PS7), else Windows PowerShell ---
-where pwsh >nul 2>&1
+REM ====== EDIT DEFAULTS HERE IF NEEDED ======
+set "REPO=mrdanoz/Koronet-Axerrio.GitTools"
+set "BOOTSTRAP_REL=tools\KXGT-BootStrap.ps1"
+set "BOOTSTRAP_URL=https://raw.githubusercontent.com/%REPO%/refs/heads/main/tools/KXGT-BootStrap.ps1"
+REM You can add default flags here, e.g.: set "BOOTSTRAP_FLAGS=-Repo %REPO%"
+set "BOOTSTRAP_FLAGS=-Repo %REPO%"
+REM ==========================================
+
+REM Choose PowerShell: prefer pwsh (7+) if available
+where /q pwsh.exe
 if %ERRORLEVEL%==0 (
-  set "PS_EXEC=pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -Command"
+  set "PSBIN=pwsh.exe"
 ) else (
-  where powershell >nul 2>&1
-  if %ERRORLEVEL%==0 (
-    set "PS_EXEC=powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command"
-  ) else (
-    echo [ERR] Neither pwsh nor powershell found on PATH.
-    exit /b 1
-  )
+  set "PSBIN=powershell.exe"
 )
 
-REM --- Decide temp path ---
-if not defined TEMP set "TEMP=%USERPROFILE%\AppData\Local\Temp"
-if not exist "%TEMP%" md "%TEMP%" >nul 2>&1
+REM Resolve script location
+set "HERE=%~dp0"
+set "LOCAL_BOOTSTRAP=%HERE%%BOOTSTRAP_REL%"
+set "TEMP_BOOTSTRAP=%TEMP%\KXGT-Bootstrap.ps1"
 
-set "BOOTSTRAP_PATH=%TEMP%\%BOOTSTRAP_NAME%"
-echo [INF] Downloading bootstrap to: "%BOOTSTRAP_PATH%"
-echo [INF] From: %BOOTSTRAP_URL%
+echo.
+echo === Installing Koronet-Axerrio.GitTools (latest) ===
+echo Using:   %PSBIN%
+echo Repo:    %REPO%
+echo.
 
-REM --- Download with forced TLS 1.2 and robust error handling ---
-%PS_EXEC% ^
+REM 1) Prefer local bootstrap next to this BAT
+if exist "%LOCAL_BOOTSTRAP%" (
+  echo Found local bootstrap: "%LOCAL_BOOTSTRAP%"
+  "%PSBIN%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%LOCAL_BOOTSTRAP%" %BOOTSTRAP_FLAGS% %*
+  goto :done
+)
+
+REM 2) Otherwise download bootstrap to temp, then execute it
+echo Local bootstrap not found at "%LOCAL_BOOTSTRAP%"
+echo Downloading bootstrap from:
+echo   %BOOTSTRAP_URL%
+echo.
+
+"%PSBIN%" -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop';" ^
-  "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12;" ^
-  "$u='%BOOTSTRAP_URL%';" ^
-  "$o='%BOOTSTRAP_PATH%';" ^
-  "try { Invoke-WebRequest -Uri $u -UseBasicParsing -OutFile $o } catch { Write-Error ('DOWNLOAD_FAIL: ' + $_.Exception.Message); exit 9 }" 
-if %ERRORLEVEL% NEQ 0 (
-  echo [ERR] Failed to download bootstrap to "%BOOTSTRAP_PATH%".
-  echo [TIP] On Windows Server 2012 R2 this is usually missing TLS 1.2 or a proxy blocking HTTPS.
-  exit /b %ERRORLEVEL%
+  "Invoke-WebRequest -Uri '%BOOTSTRAP_URL%' -OutFile '%TEMP_BOOTSTRAP%';" ^
+  "Unblock-File -Path '%TEMP_BOOTSTRAP%' -ErrorAction SilentlyContinue;"
+
+if not exist "%TEMP_BOOTSTRAP%" (
+  echo ❌ Failed to download bootstrap to "%TEMP_BOOTSTRAP%"
+  exit /b 1
 )
 
-REM --- Sanity check ---
-if not exist "%BOOTSTRAP_PATH%" (
-  echo [ERR] Download reported success but file is missing: "%BOOTSTRAP_PATH%"
-  exit /b 2
+"%PSBIN%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%TEMP_BOOTSTRAP%" %BOOTSTRAP_FLAGS% %*
+set "RC=%ERRORLEVEL%"
+
+echo.
+if "%RC%"=="0" (
+  echo ✅ Install complete.
+) else (
+  echo ❌ Install failed with exit code %RC%.
 )
 
-REM --- Execute bootstrap with PS7 if available (same shell as chosen above) ---
-echo [INF] Running bootstrap...
-%PS_EXEC% ^
-  "$ErrorActionPreference='Stop';" ^
-  "& '%BOOTSTRAP_PATH%'" 
-set ERR=%ERRORLEVEL%
-if %ERR% NEQ 0 (
-  echo [ERR] Bootstrap execution failed with exit code %ERR%.
-  exit /b %ERR%
-)
-
-echo [OK] KXGT bootstrap completed successfully.
-exit /b 0
+:done
+endlocal
