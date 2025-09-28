@@ -12,8 +12,8 @@ function Test-KXGTBranchActive {
     }
     if (-not $ServerInstance -or -not $Database) {
         $cfg = Get-KXGTConfig
-        $ServerInstance ??= $cfg.ServerInstance
-        $Database       ??= $cfg.Database
+        if ($null -eq $ServerInstance) { $ServerInstance = $cfg.ServerInstance }
+        if ($null -eq $Database) { $Database = $cfg.Database }
     }
 
     $vars = @(

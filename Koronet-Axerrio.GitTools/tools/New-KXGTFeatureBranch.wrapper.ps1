@@ -1,117 +1,96 @@
-# Interactive launcher for New-KXGTFeatureBranch
+# Minimal interactive launcher for New-KXGTFeatureBranch (PowerShell 5.1 compatible)
 $ErrorActionPreference = 'Stop'
 
-# 0) Sanity: module installed?
+# 0) Ensure module is available and import it
 if (-not (Get-Module -ListAvailable Koronet-Axerrio.GitTools)) {
-  Write-Error "Koronet-Axerrio.GitTools not found. Run your installer/bootstrap first."
+  Write-Error "Koronet-Axerrio.GitTools not found. Please install/run the bootstrap first."
   exit 1
 }
-
-# 1) Import the module
 Import-Module Koronet-Axerrio.GitTools -Force -ErrorAction Stop
 
-# 2) Load config (prompt-friendly if your function supports it)
+# 1) Try to load config (non-fatal if unavailable)
 $cfg = $null
 try {
   $cfg = Get-KXGTConfig -ForceReload -Interactive -ErrorAction Stop
 } catch {
-  $cfg = Get-KXGTConfig -ErrorAction SilentlyContinue
+  try { $cfg = Get-KXGTConfig -ErrorAction SilentlyContinue } catch { $cfg = $null }
 }
 
-# 3) Helpers
+# 2) Helpers
 function Sanitize-BranchName {
-  param([Parameter(Mandatory)][string]$Name)
+  param([Parameter(Mandatory=$true)][string]$Name)
   $n = $Name.Trim()
-  # Replace spaces & invalid chars with dashes; collapse repeats; trim dashes
-  $n = $n -replace '[^\w\.\-\/]+','-'
-  $n = $n -replace '-{2,}','-'
+  # replace invalid chars with '-', collapse repeats, trim ends
+  $n = ($n -replace '[^\w\.\-\/]+','-') -replace '-{2,}','-'
   $n = $n.Trim('-')
-  # Guard against empty or only separators
   if ([string]::IsNullOrWhiteSpace($n)) { throw "Branch name becomes empty after sanitization." }
   return $n
 }
 
-function Choose-Prefix {
-  $choices = @('feat','fix','chore','docs','refactor','test')
-  Write-Host ""
-  Write-Host "Prefix options: " -NoNewline
-  Write-Host ($choices -join ' | ') -ForegroundColor Cyan
-  $p = Read-Host "Prefix [feat]"
-  if ([string]::IsNullOrWhiteSpace($p)) { $p = 'feat' }
-  return $p
-}
-
-# 4) UI
+# 3) UI (only essential prompts)
 Write-Host ""
 Write-Host "=== Start a Feature Branch ===" -ForegroundColor Cyan
 
-$prefix = Choose-Prefix
-$short  = Read-Host "Short name (e.g. customer-filters)"
-if ([string]::IsNullOrWhiteSpace($short)) { throw "A branch short name is required." }
+$prefix = Read-Host "Prefix [feat]"
+if ([string]::IsNullOrWhiteSpace($prefix)) { $prefix = 'feat' }
 
-$baseDefault = if ($cfg -and $cfg.PSObject.Properties.Name -contains 'BaseBranch' -and $cfg.BaseBranch) { $cfg.BaseBranch } else { 'dev' }
-$base = Read-Host "Base branch [$baseDefault]"
+$short  = Read-Host "Short name (e.g. customer-filters)"
+if ([string]::IsNullOrWhiteSpace($short)) { throw "Short name is required." }
+
+# Base default from config if present, else 'dev'
+$baseDefault = 'dev'
+if ($cfg -and ($cfg.PSObject.Properties.Name -contains 'BaseBranch') -and $cfg.BaseBranch) {
+  $baseDefault = [string]$cfg.BaseBranch
+}
+$base = Read-Host ("Base branch [{0}]" -f $baseDefault)
 if ([string]::IsNullOrWhiteSpace($base)) { $base = $baseDefault }
 
-$tick = Read-Host "Ticket/Work item (optional)"
-$titl = Read-Host "Title (optional)"
+# OwnerLoginName default -> current Windows user; override as needed
+$ownerDefault = $env:USERNAME
+if ($cfg -and ($cfg.PSObject.Properties.Name -contains 'OwnerLoginName') -and $cfg.OwnerLoginName) {
+  $ownerDefault = [string]$cfg.OwnerLoginName
+}
+$owner = Read-Host ("OwnerLoginName [{0}]" -f $ownerDefault)
+if ([string]::IsNullOrWhiteSpace($owner)) { $owner = $ownerDefault }
 
 # Build final branch name
-$rawBranch = "$prefix/$short"
-$branch = Sanitize-BranchName $rawBranch
+$branch = Sanitize-BranchName "$prefix/$short"
 
-Write-Host ""
-Write-Host "About to create branch:" -ForegroundColor Yellow
-Write-Host ("  Branch : {0}" -f $branch)
-Write-Host ("  Base   : {0}" -f $base)
-if ($tick) { Write-Host ("  Ticket : {0}" -f $tick) }
-if ($titl) { Write-Host ("  Title  : {0}" -f $titl) }
-
-$ok = Read-Host "Proceed? (Y/N)"
-if ($ok -notin @('Y','y')) { Write-Host "Canceled."; exit 2 }
-
-# 5) Build parameters supported by the cmdlet
+# 4) Prepare parameters (only Branch + Base + OwnerLoginName)
 $cmd = Get-Command -Name New-KXGTFeatureBranch -ErrorAction Stop
 $allowed = $cmd.Parameters.Keys
 $params  = @{}
 
-# Candidate values (only pass those the cmdlet actually supports)
-$trySet = {
-  param($name,$value)
-  if ($value -and ($allowed -contains $name)) { $params[$name] = $value }
+function Add-IfAllowed {
+  param([string[]]$Names,[object]$Value)
+  foreach ($n in $Names) {
+    if ($Value -and ($allowed -contains $n)) { $params[$n] = $Value; return }
+  }
 }
 
-& $trySet 'Branch'        $branch
-& $trySet 'BranchName'    $branch
-& $trySet 'Name'          $branch
-& $trySet 'Base'          $base
-& $trySet 'BaseBranch'    $base
-& $trySet 'From'          $base
-& $trySet 'Ticket'        $tick
-& $trySet 'WorkItem'      $tick
-& $trySet 'Title'         $titl
+# Map to the names your cmdlet actually exposes
+Add-IfAllowed @('Branch','BranchName','Name') $branch
+Add-IfAllowed @('BaseBranch','Base','From')   $base
+Add-IfAllowed @('OwnerLoginName','LoginName','Owner','DeveloperLogin') $owner
 
-# From config (if your cmdlet supports them)
-if ($cfg) {
-  & $trySet 'RepoPath'       $cfg.RepoPath
-  & $trySet 'GitHandle'      $cfg.GitHandle
-  & $trySet 'ServerInstance' $cfg.ServerInstance
-  & $trySet 'Database'       $cfg.Database
-}
+# 5) Show exactly what will be passed
+Write-Host ""
+Write-Host "About to run:" -ForegroundColor Yellow
+$preview = ($params.GetEnumerator() | ForEach-Object { '-{0} "{1}"' -f $_.Key, $_.Value }) -join ' '
+Write-Host ("New-KXGTFeatureBranch {0}" -f $preview)
+
+$ok = Read-Host "Proceed? (Y/N)"
+if ($ok -ne 'Y' -and $ok -ne 'y') { Write-Host "Canceled."; exit 2 }
 
 # 6) Execute
 try {
-  Write-Host ""
-  Write-Host "Running: New-KXGTFeatureBranch $($params.Keys | ForEach-Object { '-' + $_ } -join ' ')" -ForegroundColor Green
   $result = New-KXGTFeatureBranch @params
-  if ($result) {
-    Write-Host ""
-    $result | Format-List *  # show any returned info
-  }
+  if ($result) { $result | Format-List * }
   Write-Host "Done." -ForegroundColor Green
+  exit 0
 } catch {
-  Write-Error "New-KXGTFeatureBranch failed: $($_.Exception.Message)"
+  Write-Error ("New-KXGTFeatureBranch failed: {0}" -f $_.Exception.Message)
   Write-Host "`nThe command accepts these parameters:" -ForegroundColor DarkYellow
-  ($allowed | Sort-Object) | ForEach-Object { "  -$_" } | Write-Host
+  $allowed | Sort-Object | ForEach-Object { "  -$_" } | Write-Host
   exit 3
 }

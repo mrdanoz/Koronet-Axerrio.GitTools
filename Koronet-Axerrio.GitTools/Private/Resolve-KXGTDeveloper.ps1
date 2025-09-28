@@ -21,7 +21,7 @@ Resolves a developer via dba.usp_Developer_Resolve (by LoginName or GitHandle).
     $gitLit   = if ($GitHandle) { "N'$GitHandle'" } else { 'NULL' }
 
     $sql = @"
-EXEC dba.usp_Developer_Resolve
+EXEC dba.axspDeveloper_Resolve
     @LoginName = $loginLit,
     @GitHandle = $gitLit;
 "@

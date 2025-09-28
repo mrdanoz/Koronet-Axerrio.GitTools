@@ -136,7 +136,9 @@ function Test-KXGTConfig {
     }
 
     # ---- Aggregate result
-    $ok = $serverOk -and ($RequireRepo ? $repoOk : $true) -and ($CheckRepoLayout ? $layoutOk : $true)
+    $repoPart   = if ($RequireRepo)     { $repoOk }   else { $true }
+    $layoutPart = if ($CheckRepoLayout) { $layoutOk } else { $true }
+    $ok = $serverOk -and $repoPart -and $layoutPart
 
     $notes = @()
     if (-not $serverOk)   { $notes += "SQL connectivity failed." }

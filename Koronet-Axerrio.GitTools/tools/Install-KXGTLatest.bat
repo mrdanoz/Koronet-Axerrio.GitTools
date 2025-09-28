@@ -10,7 +10,7 @@ REM ----------------------------------------------------------------------------
 REM ====== EDIT DEFAULTS HERE IF NEEDED ======
 set "REPO=mrdanoz/Koronet-Axerrio.GitTools"
 set "BOOTSTRAP_REL=tools\KXGT-BootStrap.ps1"
-set "BOOTSTRAP_URL=https://raw.githubusercontent.com/%REPO%/refs/heads/main/tools/KXGT-BootStrap.ps1"
+set "BOOTSTRAP_URL=https://raw.githubusercontent.com/%REPO%/refs/heads/main/Koronet-Axerrio.GitTools/tools/KXGT-BootStrap.ps1"
 REM You can add default flags here, e.g.: set "BOOTSTRAP_FLAGS=-Repo %REPO%"
 set "BOOTSTRAP_FLAGS=-Repo %REPO%"
 REM ==========================================

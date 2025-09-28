@@ -50,7 +50,7 @@ function Initialize-KXGTConfig {
         [switch] $Force,
         [switch] $OpenInEditor
     )
-
+    $isWin = $env:OS -like '*Windows*'
     # --- Determine target path ---
     switch ($Scope) {
         'Repo' {
@@ -61,7 +61,8 @@ function Initialize-KXGTConfig {
             $target = Join-Path $dir 'kxgt.config.json'
         }
         'User' {
-            if ($IsWindows) {
+            
+            if ($isWin) {
                 $base = Join-Path $env:APPDATA 'KXGT'
             } else {
                 $base = Join-Path (Join-Path $env:HOME '.config') 'kxgt'
@@ -98,7 +99,7 @@ function Initialize-KXGTConfig {
 
     # --- Optional: open in editor ---
     if ($OpenInEditor) {
-        if ($IsWindows) {
+        if ($isWin) {
             Start-Process notepad.exe $target | Out-Null
         } else {
             $editor = $env:EDITOR

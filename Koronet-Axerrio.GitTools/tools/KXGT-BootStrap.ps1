@@ -71,7 +71,9 @@ function Get-AssetZip {
     # Prefer assets named like module zip; otherwise any .zip
     $asset = $release.assets | Where-Object { $_.name -match "^$moduleName-.*\.zip$" } | Select-Object -First 1
     if (-not $asset) { $asset = $release.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1 }
-    if (-not $asset) { throw "No .zip asset found on release '$($release.tag_name ?? $release.name)'." }
+    $relName = if ($release.tag_name) { $release.tag_name } else { $release.name }
+    if (-not $asset) { throw "No .zip asset found on release '$relName'." }
+
     return $asset
 }
 
@@ -82,7 +84,8 @@ $dest = Join-Path $modulesRoot $moduleName
 # 2) Get latest release + asset
 Write-Host "Checking latest release for $Repo ..." -ForegroundColor DarkCyan
 $latest = Get-LatestRelease -repo $Repo -pre:$PreRelease
-$tag    = $latest.tag_name ?? $latest.name
+$tag = if ($latest.tag_name) { $latest.tag_name } else { $latest.name }
+
 Write-Host "Using release: $tag" -ForegroundColor Green
 $asset  = Get-AssetZip -release $latest
 

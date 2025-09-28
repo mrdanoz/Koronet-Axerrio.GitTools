@@ -135,7 +135,8 @@ function Invoke-KXGTHarvest {
     $ServerInstance = $cfg.ServerInstance
     $Database       = $cfg.Database
     if (-not $RepoPath)      { $RepoPath = $cfg.RepoPath }
-    if (-not $ProjectLayout) { $ProjectLayout = ($cfg.ProjectLayout ?? 'SSDT') }
+    if (-not $ProjectLayout) { $ProjectLayout = if ($cfg -and $cfg.ProjectLayout) { $cfg.ProjectLayout } else { 'SSDT' } }
+
 
     # --- Gate: branch must exist and have open users ---
     $varsGate = @("app=$($AppName.Replace("'", "''"))","branch=$($Branch.Replace("'", "''"))")
@@ -163,8 +164,8 @@ SELECT
         if (-not $gitEmail) { $gitEmail = (& git config --global --get user.email 2>$null) }
         if (-not $gitUser)  { $gitUser  = (& git config --global --get user.name  2>$null) }
         if ($gitEmail -or $gitUser) {
-            $emailVal = ($gitEmail ?? '').Replace("'", "''")
-            $userVal  = ($gitUser  ?? '').Replace("'", "''")
+            $emailVal = (if ($gitEmail) { $gitEmail } else { '' }).Replace("'", "''")
+            $userVal  = (if ($gitUser) { $gitUser } else { '' }).Replace("'", "''")
             $dev = Invoke-Sqlcmd -ServerInstance $ServerInstance -Database $Database -Query @"
 SELECT TOP (1) LoginName, RepoPath
 FROM dba.Developer WITH (NOLOCK)
@@ -250,7 +251,9 @@ ORDER BY a.PostTime;
     if ($ScriptCreatesAndAlters) {
         try {
             $srv = New-Object Microsoft.SqlServer.Management.Smo.Server($ServerInstance)
-            $db  = $srv.Databases[$Database] ?? (throw "Database '$Database' not found on $ServerInstance.")
+            $db = $srv.Databases[$Database]
+            if ($null -eq $db) { throw "Database '$Database' not found on $ServerInstance." }
+
             $scripter = New-Object Microsoft.SqlServer.Management.Smo.Scripter($srv)
             $o = $scripter.Options
             $o.ToFileOnly            = $false
@@ -346,7 +349,12 @@ ORDER BY a.PostTime;
         if ($WriteSqlBundle) {
             $sqlPath = Join-Path $OutDir "changes_$($Branch)_$ts.sql"
             $sb = [System.Text.StringBuilder]::new()
-            foreach ($r in $rows) { $null=$sb.AppendLine(($r.TSQL ?? '').Trim()); $null=$sb.AppendLine('GO') }
+            foreach ($r in $rows) {
+                $tsql = if ($r.TSQL) { $r.TSQL } else { '' }
+                $null = $sb.AppendLine($tsql.Trim())
+                $null = $sb.AppendLine('GO')
+            }
+
             [IO.File]::WriteAllText($sqlPath, $sb.ToString(), [Text.Encoding]::UTF8)
             Write-Verbose "Wrote SQL bundle: $sqlPath"
         }

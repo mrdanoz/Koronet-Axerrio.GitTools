@@ -26,7 +26,11 @@ Creates a new git feature branch and logs it in the DB (status 'Open').
     if (-not $SqlInstance) { $SqlInstance = $cfg.auditServer }
     if (-not $Database)    { $Database    = $cfg.auditDatabase }
     if (-not $EnableDbLogging.IsPresent -and $cfg -and $cfg.enableDbLogging) { $EnableDbLogging = $true }
-    if (-not $AppName) { $AppName = Get-KXGTAppName -LoginName ($OwnerLoginName ?? $env:USERNAME) }
+    if (-not $AppName) {
+        $login = if ($PSBoundParameters.ContainsKey('OwnerLoginName') -and $OwnerLoginName) { $OwnerLoginName } else { $env:USERNAME }
+        $AppName = Get-KXGTAppName -LoginName $login
+    }
+
 
     # Resolve owner and repo path
     if (-not $OwnerDeveloperID -or -not $RepoPath) {
