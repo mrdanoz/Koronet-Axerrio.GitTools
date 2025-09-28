@@ -49,6 +49,7 @@ jobs:
           # sanity: these usually exist
           if (-not (Test-Path (Join-Path $moduleRoot 'Public')))  { Write-Warning "Missing 'Public' folder under $moduleRoot" }
           if (-not (Test-Path (Join-Path $moduleRoot 'Private'))) { Write-Warning "Missing 'Private' folder under $moduleRoot" }
+          if (-not (Test-Path (Join-Path $moduleRoot 'tools'))) { Write-Warning "Missing 'tools' folder under $moduleRoot" }
 
           # zip the FOLDER so the archive contains a top-level Koronet-Axerrio.GitTools/
           Push-Location $parent
