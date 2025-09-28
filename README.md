@@ -144,10 +144,6 @@ If no errors appear, the installation and configuration are correct.
 
 ## 📁 Recommended Module Location
 
-PowerShell can load modules from several folders.  
-To avoid issues with **OneDrive syncing**, the recommended location for this module is:
-
-
 ### 🧠 Why use the local *Documents* folder
 - ✅ **Stable path** — not affected by OneDrive renaming (`Documenten` / `Documents`)
 - ✅ **Offline-friendly** — works even if OneDrive is paused or disconnected
@@ -172,6 +168,30 @@ If installation or configuration fails:
 1. Run Uninstall-KXGTLocal.bat to clean old versions  
 2. Reinstall with Install-KXGTLatest.bat  
 3. If issues persist, open an issue on GitHub or contact the DBA/DevOps maintainer
+
+## 🧩 Troubleshooting: Module not visible in PowerShell 7
+
+If `Import-Module Koronet-Axerrio.GitTools` runs without errors but  
+`Get-Command -Module Koronet-Axerrio.GitTools` shows no functions, the module is installed correctly but **PowerShell 7 is not scanning the correct folder**.
+
+This usually happens on Windows Server 2012 R2 or on systems where  
+`$env:PSModulePath` has been overridden (for example, pointing to a network share or the old *WindowsPowerShell* folder).
+
+---
+
+### ✅ Quick fix – current session only
+
+Run this in PowerShell 7 (**pwsh**) to restore the default module search paths:
+
+```powershell
+$defaults = @(
+  "$HOME\Documents\PowerShell\Modules",
+  "$env:ProgramFiles\PowerShell\Modules",
+  "$env:ProgramFiles\WindowsPowerShell\Modules",
+  "$PSHOME\Modules"
+)
+$custom = $env:PSModulePath -split ';' | Where-Object { $_ -and ($_ -notin $defaults) }
+$env:PSModulePath = ($defaults + $custom) -join ';'
 
 ---
 
